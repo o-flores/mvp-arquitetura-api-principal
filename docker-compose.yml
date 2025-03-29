@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  api-principal:
+    build: .
+    ports:
+      - "8000:8000"
+    networks:
+      - mvp-net
+
+  api-secundaria:
+    build:
+      context: ../mvp-arquitetura-api-secundaria
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    networks:
+      - mvp-net
+    volumes:
+      - cache-data:/app # Mapeia para o diretório da aplicação
+
+networks:
+  mvp-net:
+
+volumes:
+  cache-data:
