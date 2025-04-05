@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   api-principal:
     build: .
@@ -16,11 +14,6 @@ services:
       - "8001:8001"
     networks:
       - mvp-net
-    volumes:
-      - cache-data:/app # Mapeia para o diretório da aplicação
 
 networks:
   mvp-net:
-
-volumes:
-  cache-data:

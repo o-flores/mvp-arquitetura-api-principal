@@ -1,13 +1,9 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, redirect
 import requests
 import re
 from flask_openapi3 import OpenAPI, Info, Tag
 from flask_cors import CORS
-import logging
-
-# Configuração do logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+from app.schemas import DeleteValidationSchema, MessageSchema, ValidateDocumentSchema, ValidationResultSchema, ValidationCacheSchema, ValidationListSchema, UpdateValidationSchema
 
 # Criação única da aplicação
 info = Info(title="mvp API", version="1.0.0")
@@ -16,12 +12,15 @@ CORS(app)
 
 API_CACHE_URL = "http://api-secundaria:8001"  # Nome do serviço na rede Docker
 
+# Definição de Tags
+doc_tag = Tag(name="Documentação", description="Documentação da API")
+validation_tag = Tag(name="Validação", description="Validação de documentos CPF/CNPJ")
 
-@app.route('/', methods=['GET'])
-def hello_world():
-    response = requests.get(f"{API_CACHE_URL}")
-    logger.debug(response.json())
-    return response.json(), 200
+@app.get('/', tags=[doc_tag])
+def doc():
+    """Redireciona para /openapi, tela que permite a escolha do estilo de documentação.
+    """
+    return redirect('/openapi')
 
 # Validação de CPF (algoritmo local)
 def validar_cpf(cpf):
@@ -45,49 +44,88 @@ def validar_cnpj(cnpj):
     except:
         return False
 
-@app.route('/validate', methods=['POST'])
-def validate_document():
-    document = request.json.get('document')
-    logger.debug(f"Dados recebidos: {document}")
+@app.post('/validate', tags=[validation_tag], responses={
+    200: ValidationResultSchema,
+    400: MessageSchema,
+    500: MessageSchema
+})
+def validate_document(body: ValidateDocumentSchema):
+    """Valida um documento CPF/CNPJ. Verifica primeiro no cache.
+    """
+    document = body.document
+
     if not document:
         return jsonify({"error": "Documento não fornecido"}), 400
 
-    # Verifica se já está em cache
-    response = requests.get(f"{API_CACHE_URL}/cache/{document}")
+    # Remove caracteres não numéricos para validação
+    cleaned_document = re.sub(r'\D', '', document)
+    
+    # Validação de comprimento
+    if len(cleaned_document) not in (11, 14):
+        return jsonify({"error": "Documento inválido: CPF deve ter 11 dígitos, CNPJ 14 dígitos"}), 400
+
+    # Determina o tipo pelo tamanho do documento limpo
+    doc_type = "CNPJ" if len(cleaned_document) == 14 else "CPF"
+
+    # Verifica se já está em cache usando o documento limpo
+    response = requests.get(f"{API_CACHE_URL}/cache/{cleaned_document}")
     if response.status_code == 200:
         return jsonify(response.json()), 200
 
-    # Validação
-    doc_type = "CNPJ" if len(document) > 11 else "CPF"
-    is_valid = validar_cnpj(document) if doc_type == "CNPJ" else validar_cpf(document)
+    # Validação de acordo com o tipo
+    if doc_type == "CPF":
+        is_valid = validar_cpf(cleaned_document)
+    else:
+        is_valid = validar_cnpj(cleaned_document)
 
-    # Salva no cache
+    # Salva no cache usando o documento limpo
     requests.post(
         f"{API_CACHE_URL}/cache",
-        json={"document": document, "valid": is_valid, "type": doc_type}
+        json={"document": cleaned_document, "valid": is_valid, "type": doc_type}
     )
 
-    return jsonify({"document": document, "valid": is_valid }), 200
+    return jsonify({
+        "document": cleaned_document,
+        "valid": is_valid,
+        "type": doc_type
+    }), 200
 
-@app.route('/validations', methods=['GET'])
+@app.get('/validations', tags=[validation_tag], responses={
+    200: ValidationListSchema,
+    500: MessageSchema
+})
 def list_validations():
+    """Lista todas as validações armazenadas no cache.
+    """
     response = requests.get(f"{API_CACHE_URL}/cache")
-    return jsonify(response.json()), response.status_code
+    if response.status_code == 200:
+        return {"validations": response.json()}, 200
+    return response.json(), response.status_code
 
-@app.route('/validations', methods=['PUT'])
-def update_validation():
-    document = request.json.get('document')
+@app.put('/validations', tags=[validation_tag], responses={
+    200: ValidationCacheSchema,
+    400: MessageSchema,
+    500: MessageSchema
+})
+def update_validation(body: UpdateValidationSchema):
+    """Atualiza uma validação existente no cache.
+    """
     response = requests.put(
-        f"{API_CACHE_URL}/cache/{document}",
-        json=data
+        f"{API_CACHE_URL}/cache/{body.document}",
+        json={"valid": body.valid, "type": body.type}
     )
-    return jsonify(response.json()), response.status_code
+    return response.json(), response.status_code
 
-@app.route('/validations', methods=['DELETE'])
-def delete_validation():
-    document = request.json.get('document')
-    response = requests.delete(f"{API_CACHE_URL}/cache/{document}")
-    return jsonify(response.json()), response.status_code
+@app.delete('/validations', tags=[validation_tag], responses={
+    200: MessageSchema,
+    404: MessageSchema,
+    500: MessageSchema
+})
+def delete_validation(body: DeleteValidationSchema):
+    """Remove uma validação do cache.
+    """
+    response = requests.delete(f"{API_CACHE_URL}/cache/{body.document}")
+    return response.json(), response.status_code
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000, debug=True)
