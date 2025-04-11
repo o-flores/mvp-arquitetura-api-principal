@@ -14,7 +14,7 @@ API REST para validação de documentos com integração de cache e consulta à 
 
 ### Instalação
 
-Para correta instalação do projeto lembre-se de instalar a `api-primaria` e a (`api-secundaria`)(https://github.com/o-flores/mvp-arquitetura-api-secundaria)dentro da mesma pasta. No exemplo a seguir criaremos a pasta `mvp-arquitetura` e clonaremos este projeto dentro dela.
+Para correta instalação do projeto lembre-se de instalar a `api-primaria` e a [`api-secundaria`](https://github.com/o-flores/mvp-arquitetura-api-secundaria)dentro da mesma pasta. No exemplo a seguir criaremos a pasta `mvp-arquitetura` e clonaremos este projeto dentro dela.
 
 ```bash
 mkdir mvp-arquitetura
